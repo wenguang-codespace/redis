@@ -5400,10 +5400,10 @@ int linuxOvercommitMemoryValue(void) {
 
 void linuxMemoryWarnings(void) {
     if (linuxOvercommitMemoryValue() == 0) {
-        serverLog(LL_WARNING,"WARNING overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.");
+        serverLog(LL_WARNING,"警告 overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.");
     }
     if (THPIsEnabled() && THPDisable()) {
-        serverLog(LL_WARNING,"WARNING you have Transparent Huge Pages (THP) support enabled in your kernel. This will create latency and memory usage issues with Redis. To fix this issue run the command 'echo madvise > /sys/kernel/mm/transparent_hugepage/enabled' as root, and add it to your /etc/rc.local in order to retain the setting after a reboot. Redis must be restarted after THP is disabled (set to 'madvise' or 'never').");
+        serverLog(LL_WARNING,"警告 you have Transparent Huge Pages (THP) support enabled in your kernel. This will create latency and memory usage issues with Redis. To fix this issue run the command 'echo madvise > /sys/kernel/mm/transparent_hugepage/enabled' as root, and add it to your /etc/rc.local in order to retain the setting after a reboot. Redis must be restarted after THP is disabled (set to 'madvise' or 'never').");
     }
 }
 
@@ -6151,6 +6151,7 @@ redisTestProc *getTestProcByName(const char *name) {
 #endif
 
 int main(int argc, char **argv) {
+    
     struct timeval tv;
     int j;
     char config_from_stdin = 0;
@@ -6197,11 +6198,19 @@ int main(int argc, char **argv) {
 
     /* We need to initialize our libraries, and the server configuration. */
 #ifdef INIT_SETPROCTITLE_REPLACEMENT
+    /* 设置进程标题 */
     spt_init(argc, argv);
 #endif
+    /* 设置地理位置 */
     setlocale(LC_COLLATE,"");
+
+    /* 设置时区 */
     tzset(); /* Populates 'timezone' global. */
+
+    /* 未知 */
     zmalloc_set_oom_handler(redisOutOfMemoryHandler);
+
+    /* 未知 */
     srand(time(NULL)^getpid());
     srandom(time(NULL)^getpid());
     gettimeofday(&tv,NULL);
@@ -6212,19 +6221,30 @@ int main(int argc, char **argv) {
      * to reset it and restore it back. We do this early to avoid a potential
      * race condition with threads that could be creating files or directories.
      */
+    /* 文件权限 */
     umask(server.umask = umask(0777));
 
+    /* Hash  */
     uint8_t hashseed[16];
     getRandomBytes(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
 
+    /* 进程名称 */
     char *exec_name = strrchr(argv[0], '/');
     if (exec_name == NULL) exec_name = argv[0];
     server.sentinel_mode = checkForSentinelMode(argc,argv, exec_name);
+    
+    /* 初始化配置文件 */
     initServerConfig();
+    
+    /* 访问控制列表 */
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the
                   basic networking code and client creation depends on it. */
+    
+    /* 模块初始化 */
     moduleInitModulesSystem();
+
+    /* ? */
     tlsInit();
 
     /* Store the executable path and arguments in a safe place in order
@@ -6250,6 +6270,7 @@ int main(int argc, char **argv) {
     else if (strstr(exec_name,"redis-check-aof") != NULL)
         redis_check_aof_main(argc,argv);
 
+    /* 解析参数 */
     if (argc >= 2) {
         j = 1; /* First option to parse in argv[] */
         sds options = sdsempty();
@@ -6327,15 +6348,23 @@ int main(int argc, char **argv) {
     }
 
     readOOMScoreAdj();
+
+    /* 初始化服务器 */
     initServer();
+
+    /* 创建PID 文件 */
     if (background || server.pidfile) createPidFile();
+
     if (server.set_proc_title) redisSetProcTitle(NULL);
+
+    /* 初始化时候的ASCII文字展示 */
     redisAsciiArt();
+
     checkTcpBacklogSettings();
 
     if (!server.sentinel_mode) {
         /* Things not needed when running in Sentinel mode. */
-        serverLog(LL_WARNING,"Server initialized");
+        serverLog(LL_WARNING,"服务器初始化完成");
     #ifdef __linux__
         linuxMemoryWarnings();
     #if defined (__arm64__)
@@ -6355,12 +6384,23 @@ int main(int argc, char **argv) {
         }
     #endif /* __arm64__ */
     #endif /* __linux__ */
+
+        /* 模块初始化 */
         moduleInitModulesSystemLast();
+
+        /* 从队列中加载模块 */
         moduleLoadFromQueue();
+
+        /* 启动的时候 ACL 加载用户 */
         ACLLoadUsersAtStartup();
+
+        /* 服务器初始化完成的时候的操作 */
         InitServerLast();
+
+        /* 从磁盘加载数据: aof  */
         loadDataFromDisk();
-        /* Open the AOF file if needed. */
+
+        /* 如果有需要就打开AOF 文件，以便去写入内容 */
         if (server.aof_state == AOF_ON) {
             server.aof_fd = open(server.aof_filename,
                                  O_WRONLY|O_APPEND|O_CREAT,0644);
@@ -6370,6 +6410,8 @@ int main(int argc, char **argv) {
                 exit(1);
             }
         }
+
+        /* 集群 */
         if (server.cluster_enabled) {
             if (verifyClusterConfigWithData() == C_ERR) {
                 serverLog(LL_WARNING,
@@ -6379,14 +6421,14 @@ int main(int argc, char **argv) {
             }
         }
         if (server.ipfd.count > 0 || server.tlsfd.count > 0)
-            serverLog(LL_NOTICE,"Ready to accept connections");
+            serverLog(LL_NOTICE,"准备接受外部请求");
         if (server.sofd > 0)
-            serverLog(LL_NOTICE,"The server is now ready to accept connections at %s", server.unixsocket);
+            serverLog(LL_NOTICE,"The server is now 1ready to accept connections at %s", server.unixsocket);
         if (server.supervised_mode == SUPERVISED_SYSTEMD) {
             if (!server.masterhost) {
-                redisCommunicateSystemd("STATUS=Ready to accept connections\n");
+                redisCommunicateSystemd("STATUS=Ready 2to accept connections\n");
             } else {
-                redisCommunicateSystemd("STATUS=Ready to accept connections in read-only mode. Waiting for MASTER <-> REPLICA sync\n");
+                redisCommunicateSystemd("STATUS=Ready 3to accept connections in read-only mode. Waiting for MASTER <-> REPLICA sync\n");
             }
             redisCommunicateSystemd("READY=1\n");
         }
@@ -6395,7 +6437,7 @@ int main(int argc, char **argv) {
         InitServerLast();
         sentinelIsRunning();
         if (server.supervised_mode == SUPERVISED_SYSTEMD) {
-            redisCommunicateSystemd("STATUS=Ready to accept connections\n");
+            redisCommunicateSystemd("STATUS=Ready to 43accept connections\n");
             redisCommunicateSystemd("READY=1\n");
         }
     }
@@ -6406,10 +6448,13 @@ int main(int argc, char **argv) {
     }
 
     redisSetCpuAffinity(server.server_cpulist);
+
     setOOMScoreAdj(-1);
 
+    /* 异步事件 循环 */
     aeMain(server.el);
     aeDeleteEventLoop(server.el);
+
     return 0;
 }
 
